@@ -25,6 +25,7 @@ from vehicle_flow_counter.config import (
     UPLOAD_SELECTED_NONE,
     UPLOAD_TITLE,
 )
+from vehicle_flow_counter.domain.models import VideoEntry
 from vehicle_flow_counter.services.video_repository import salvar_video
 
 
@@ -36,7 +37,7 @@ class UploadScreen(ctk.CTkFrame):
         master,
         *,
         on_back: Callable[[], None],
-        on_ready_for_flow: Callable[[], None],
+        on_ready_for_flow: Callable[[VideoEntry], None],
     ) -> None:
         super().__init__(master, fg_color="transparent")
         self._on_back = on_back
@@ -45,6 +46,7 @@ class UploadScreen(ctk.CTkFrame):
         self._selected_path: Path | None = None
         self._copied_ready = False
         self._busy = threading.Event()
+        self._saved_entry: VideoEntry | None = None
 
         ctk.CTkLabel(self, text=UPLOAD_TITLE, font=ctk.CTkFont(size=18, weight="bold")).pack(
             anchor="w", pady=(0, 16)
@@ -89,6 +91,7 @@ class UploadScreen(ctk.CTkFrame):
         self._busy.clear()
         self._selected_path = None
         self._copied_ready = False
+        self._saved_entry = None
 
         self._name_label.configure(text=UPLOAD_SELECTED_NONE)
         self._status_label.configure(text="")
@@ -152,23 +155,30 @@ class UploadScreen(ctk.CTkFrame):
         threading.Thread(target=self._copy_worker, args=(path,), daemon=True).start()
 
     def _copy_worker(self, path: Path) -> None:
+        saved: VideoEntry | None = None
         try:
-            salvar_video(path)
+            saved = salvar_video(path)
             ok = True
             err_msg: str | None = None
         except (OSError, ValueError) as exc:
             ok = False
             err_msg = str(exc)
 
-        self.after(0, lambda: self._on_copy_finished(ok=ok, detail=err_msg))
+        self.after(
+            0,
+            lambda: self._on_copy_finished(ok=ok, saved=saved if ok else None, detail=err_msg),
+        )
 
-    def _on_copy_finished(self, *, ok: bool, detail: str | None) -> None:
+    def _on_copy_finished(
+        self, *, ok: bool, saved: VideoEntry | None = None, detail: str | None
+    ) -> None:
         self._progress.stop()
         self._progress.pack_forget()
         self._busy.clear()
 
         if ok:
             self._copied_ready = True
+            self._saved_entry = saved
             self._pick_btn.configure(state="disabled")
             self._change_btn.configure(state="disabled")
             self._confirm_btn.configure(state="disabled")
@@ -176,6 +186,7 @@ class UploadScreen(ctk.CTkFrame):
             self._status_label.configure(text=UPLOAD_SUCCESS)
         else:
             self._copied_ready = False
+            self._saved_entry = None
             self._pick_btn.configure(state="normal")
             self._change_btn.configure(state="normal")
             self._confirm_btn.configure(state="normal")
@@ -187,4 +198,6 @@ class UploadScreen(ctk.CTkFrame):
     def _finish_and_go_home(self) -> None:
         if not self._copied_ready or self._busy.is_set():
             return
-        self._on_ready_for_flow()
+        if self._saved_entry is None:
+            return
+        self._on_ready_for_flow(self._saved_entry)

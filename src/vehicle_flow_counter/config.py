@@ -38,6 +38,22 @@ UPLOAD_DIALOG_FILETYPES = [("MP4", "*.mp4"), ("Todos os arquivos", "*.*")]
 UPLOAD_MP4_REQUIRED = "Selecione um arquivo com extensão .mp4."
 UPLOAD_SAVE_ERROR = "Não foi possível salvar o vídeo."
 
+# Wizard de ROI / linha (OpenCV — títulos e textos guiados PT-BR)
+FLOW_ROI_WINDOW_TITLE = (
+    "Passo 4/6 — Área de interesse (ROI): arraste um retângulo e pressione ENTER."
+)
+FLOW_LINE_WINDOW_TITLE = (
+    "Passo 5/6 — Linha de contagem: clique dois pontos dentro da ROI; ENTER confirma."
+)
+FLOW_SELECTOR_MAX_DISPLAY_SIDE_PX = 1200  # lado maior máximo apenas para pré-visualização
+ROI_SELECTOR_MIN_SIDE_PX = 32  # lado mínimo da ROI antes de aceitar ENTER
+FLOW_CONFIGURED_TITLE = "Configuração da verificação"
+FLOW_CONFIGURED_MESSAGE = (
+    "ROI e linha de contagem definidas com sucesso. "
+    "O passo seguinte será o tracking em tempo real (próxima fase)."
+)
+FLOW_CONFIGURE_ERROR_TITLE = "Não foi possível ler o vídeo"
+
 # Detector / tracking — valores razoáveis para v1; ajustados nas fases de visão computacional.
 MIN_CONTOUR_AREA_PIXELS = 800
 MAX_ASSOCIATION_DISTANCE_PIXELS = 80

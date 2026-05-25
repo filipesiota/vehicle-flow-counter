@@ -9,6 +9,7 @@ from typing import Any
 import customtkinter as ctk
 
 from vehicle_flow_counter.config import (
+    BTN_START_VERIFICATION,
     BTN_UPLOAD_NEW_VIDEO,
     HOME_DETAILS_HEADER,
     HOME_DETAILS_PLACEHOLDER,
@@ -29,10 +30,13 @@ class HomeScreen(ctk.CTkFrame):
         master: Any,
         *,
         on_upload_requested: Callable[[], None],
+        on_start_verification: Callable[[VideoEntry], None],
     ) -> None:
         super().__init__(master, fg_color="transparent")
         self._on_upload_requested = on_upload_requested
+        self._on_start_verification = on_start_verification
         self._selected_slug: str | None = None
+        self._selected_entry: VideoEntry | None = None
         self._buttons: dict[str, ctk.CTkButton] = {}
 
         header = ctk.CTkFrame(self, fg_color="transparent")
@@ -61,23 +65,37 @@ class HomeScreen(ctk.CTkFrame):
         details = ctk.CTkFrame(body)
         details.grid(row=0, column=1, sticky="nsew")
 
-        ctk.CTkLabel(details, text=HOME_DETAILS_HEADER, font=ctk.CTkFont(size=15, weight="bold")).pack(
-            anchor="w", padx=12, pady=(12, 4)
+        details_header_row = ctk.CTkFrame(details, fg_color="transparent")
+        details_header_row.pack(fill="x", padx=12, pady=(12, 4))
+        ctk.CTkLabel(details_header_row, text=HOME_DETAILS_HEADER, font=ctk.CTkFont(size=15, weight="bold")).pack(
+            side="left"
         )
+
+        self._verify_btn = ctk.CTkButton(
+            details_header_row,
+            text=BTN_START_VERIFICATION,
+            width=210,
+            command=self._invoke_verification_flow,
+            state="disabled",
+        )
+        self._verify_btn.pack(side="right")
+
         self._details_text = ctk.CTkTextbox(details, wrap="word", height=340)
         self._details_text.pack(fill="both", expand=True, padx=12, pady=(4, 12))
         self._details_text.configure(state="disabled")
 
-    def refresh_video_list(self) -> None:
-        """Recarrega a lista a partir do disco."""
+    def refresh_video_list(self, *, focus: VideoEntry | None = None) -> None:
+        """Recarrega a lista a partir do disco; opcionalmente foca uma entrada pelo ``slug``."""
         for child in self._list_body.winfo_children():
             child.destroy()
 
         self._buttons.clear()
         self._selected_slug = None
+        self._selected_entry = None
 
         videos = listar_videos()
         if not videos:
+            self._verify_btn.configure(state="disabled")
             ctk.CTkLabel(self._list_body, text=HOME_NO_VIDEOS, wraplength=280).pack(pady=20)
             self._clear_details_placeholder()
             return
@@ -98,7 +116,13 @@ class HomeScreen(ctk.CTkFrame):
             btn.pack(fill="x", pady=(0, 6))
             self._buttons[entry.slug] = btn
 
-        self._select_video(videos[0])
+        chosen = videos[0]
+        if focus is not None:
+            for cand in videos:
+                if cand.slug == focus.slug:
+                    chosen = cand
+                    break
+        self._select_video(chosen)
 
     def _clear_details_placeholder(self) -> None:
         self._set_details_body(HOME_DETAILS_PLACEHOLDER + "\n")
@@ -111,6 +135,8 @@ class HomeScreen(ctk.CTkFrame):
 
     def _select_video(self, entry: VideoEntry) -> None:
         self._selected_slug = entry.slug
+        self._selected_entry = entry
+        self._verify_btn.configure(state="normal")
         self._highlight_selection()
 
         vp = Path(entry.video_path)
@@ -119,7 +145,12 @@ class HomeScreen(ctk.CTkFrame):
             f"{HOME_SELECTED_PATH}\n{vp}\n\n"
             + HOME_DETAILS_PLACEHOLDER
         )
-        self._set_details_body(lines)
+        self._set_details_body(lines                )
+
+    def _invoke_verification_flow(self) -> None:
+        if self._selected_entry is None:
+            return
+        self._on_start_verification(self._selected_entry)
 
     def _highlight_selection(self) -> None:
         for slug, btn in self._buttons.items():
