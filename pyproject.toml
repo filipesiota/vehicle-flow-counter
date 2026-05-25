@@ -1,0 +1,22 @@
+[project]
+name = "vehicle-flow-counter"
+version = "0.1.0"
+description = "Desktop app to count vehicles crossing a line in highway videos."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "customtkinter>=5.2.0",
+    "pillow>=10.0.0",
+    "opencv-python>=4.9.0",
+    "numpy>=1.26.0",
+]
+
+[project.scripts]
+vehicle-flow-counter = "vehicle_flow_counter.__main__:main"
+
+[build-system]
+requires = ["hatchling>=1.24.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vehicle_flow_counter"]
