@@ -118,6 +118,7 @@ class TrackingSession:
                                 self.entry.captures_dir,
                                 vehicle_id=int(blob.vehicle_id),
                                 crop_bgr=crop,
+                                vehicle_class_slug=config.vehicle_class_slug(blob.class_id),
                             )
 
                 stats_slice = TrackingStats(started_at=stats.started_at, vehicles_counted=stats.vehicles_counted)

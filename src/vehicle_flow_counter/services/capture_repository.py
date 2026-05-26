@@ -11,7 +11,7 @@ import numpy as np
 
 def _captura_sort_key(path: Path) -> tuple[float, str]:
     """
-    Extrai ordenação pelo prefixo UNIX (nome ``{unix}_vehicle_{id}.jpg``).
+    Extrai ordenação pelo prefixo UNIX (nome ``{unix}_{tipo}_{id}.jpg`` ou legado ``{unix}_vehicle_{id}.jpg``).
     Fallbacks garantem ordenação determinística mesmo com nomes inesperados.
     """
     stem = path.stem
@@ -19,6 +19,12 @@ def _captura_sort_key(path: Path) -> tuple[float, str]:
         prefix, _, tail = stem.partition("_vehicle_")
         try:
             return (float(prefix), tail or stem)
+        except ValueError:
+            pass
+    if "_" in stem:
+        prefix, _, rest = stem.partition("_")
+        try:
+            return (float(prefix), rest or stem)
         except ValueError:
             pass
     return (float("inf"), stem.lower())
@@ -33,9 +39,15 @@ def listar_capturas(captures_dir: Path | str) -> list[Path]:
     return sorted(diretorio.glob("*.jpg"), key=_captura_sort_key)
 
 
-def salvar_captura(captures_dir: Path | str, *, vehicle_id: int, crop_bgr: np.ndarray) -> Path:
+def salvar_captura(
+    captures_dir: Path | str,
+    *,
+    vehicle_id: int,
+    crop_bgr: np.ndarray,
+    vehicle_class_slug: str = "veiculo",
+) -> Path:
     """
-    Grava JPEG em ``{captures_dir}/{unix}s_vehicle_{vehicle_id}.jpg``.
+    Grava JPEG em ``{captures_dir}/{unix}s_{tipo}_{vehicle_id}.jpg``.
 
     Raises:
         OSError / cv2.errors: quando o disco estiver bloqueado ou ``imwrite`` falhar.
@@ -44,7 +56,8 @@ def salvar_captura(captures_dir: Path | str, *, vehicle_id: int, crop_bgr: np.nd
     dest_parent.mkdir(parents=True, exist_ok=True)
 
     ts = time.time()
-    filename = f"{ts:.6f}_vehicle_{int(vehicle_id)}.jpg"
+    slug = vehicle_class_slug.strip().lower() or "veiculo"
+    filename = f"{ts:.6f}_{slug}_{int(vehicle_id)}.jpg"
     target = dest_parent / filename
 
     ok = cv2.imwrite(str(target), crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 92])

@@ -7,6 +7,7 @@ from collections.abc import Sequence
 import cv2
 import numpy as np
 
+from vehicle_flow_counter.config import vehicle_class_label_pt
 from vehicle_flow_counter.domain.models import CountingLine, Roi
 from vehicle_flow_counter.tracking.object_tracker import TrackedBlob
 
@@ -23,7 +24,7 @@ def build_tracking_view(
     Painel combinado ROI-sized em BGR: máscara binária (branco objeto) sobre fundo,
 
     fusionada discretamente com o recorte para contexto espacial — círculo azul (BGR) no centro,
-    texto ``Veiculo N`` acima da bolha detectada e segmento/limites destacados conforme planejado na Fase 4.
+    rótulo ``{tipo} N`` (ex.: Carro 3) acima da bolha detectada e segmento/limites destacados conforme planejado na Fase 4.
     """
 
     if mask_roi.ndim != 2 or mask_roi.size == 0:
@@ -86,7 +87,7 @@ def build_tracking_view(
         radius = max(6, min(ri_w, ri_h) // 40)
         cv2.circle(canvas, (cx_loc, cy_loc), radius, (255, 0, 0), thickness=-1, lineType=cv2.LINE_AA)
 
-        label = f"Veiculo {tr.vehicle_id}"
+        label = f"{vehicle_class_label_pt(tr.class_id)} {tr.vehicle_id}"
         (txt_w, text_height), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_DUPLEX, font_scale, thick_text)
 
         txt_x = cx_loc - txt_w // 2

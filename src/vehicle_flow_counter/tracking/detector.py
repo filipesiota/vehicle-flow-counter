@@ -21,6 +21,8 @@ class BlobDetection:
     cy: int
     bbox_xywh: tuple[int, int, int, int]  # x, y, w, h relativos à ROI
     contour_roi: np.ndarray  # formato N x 1 x 2, int32, coordenadas na ROI
+    class_id: int  # ID COCO (2=car, 3=motorcycle, 5=bus, 7=truck)
+    confidence: float
 
 
 class YoloVehicleDetector:
@@ -124,7 +126,9 @@ class YoloVehicleDetector:
 
         blobs: list[BlobDetection] = []
         xyxy = boxes.xyxy.cpu().numpy()
-        for row in xyxy:
+        cls_ids = boxes.cls.cpu().numpy().astype(int)
+        confidences = boxes.conf.cpu().numpy()
+        for row, cls_id, conf in zip(xyxy, cls_ids, confidences, strict=True):
             x1, y1, x2, y2 = (float(v) for v in row[:4])
             bx = int(max(0, min(round(x1), ri_w - 1)))
             by = int(max(0, min(round(y1), ri_h - 1)))
@@ -152,6 +156,8 @@ class YoloVehicleDetector:
                     cy=cy,
                     bbox_xywh=(bx, by, bw, bh),
                     contour_roi=contour,
+                    class_id=int(cls_id),
+                    confidence=float(conf),
                 )
             )
 

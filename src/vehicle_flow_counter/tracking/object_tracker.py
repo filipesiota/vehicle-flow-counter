@@ -20,6 +20,7 @@ class TrackedBlob:
     bbox_roi: tuple[int, int, int, int]  # x, y, w, h na ROI
     contour_roi: np.ndarray
     frames_alive: int
+    class_id: int
 
 
 @dataclass
@@ -29,6 +30,7 @@ class _TrackState:
     cy: int
     bbox_roi: tuple[int, int, int, int]
     contour_roi: np.ndarray
+    class_id: int
     missing_frames: int = 0
     frames_alive: int = 1
 
@@ -104,6 +106,7 @@ class CentroidTracker:
             ts.cy = blob.cy
             ts.bbox_roi = blob.bbox_xywh
             ts.contour_roi = blob.contour_roi
+            ts.class_id = blob.class_id
             ts.missing_frames = 0
             ts.frames_alive += 1
 
@@ -123,6 +126,7 @@ class CentroidTracker:
                 cy=blob.cy,
                 bbox_roi=blob.bbox_xywh,
                 contour_roi=blob.contour_roi,
+                class_id=blob.class_id,
                 missing_frames=0,
                 frames_alive=1,
             )
@@ -135,6 +139,7 @@ class CentroidTracker:
                 bbox_roi=st.bbox_roi,
                 contour_roi=st.contour_roi,
                 frames_alive=st.frames_alive,
+                class_id=st.class_id,
             )
             for st in self._tracks.values()
         ]

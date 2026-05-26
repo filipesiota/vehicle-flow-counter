@@ -87,6 +87,32 @@ YOLO_IMGSZ = 480
 YOLO_DEVICE = ""  # vazio = auto (CUDA se disponível, senão CPU)
 # COCO: car=2, motorcycle=3, bus=5, truck=7
 YOLO_VEHICLE_CLASS_IDS = frozenset({2, 3, 5, 7})
+YOLO_COCO_VEHICLE_LABELS_PT: dict[int, str] = {
+    2: "Carro",
+    3: "Moto",
+    5: "Ônibus",
+    7: "Caminhão",
+}
+YOLO_COCO_VEHICLE_SLUGS: dict[int, str] = {
+    2: "carro",
+    3: "moto",
+    5: "onibus",
+    7: "caminhao",
+}
+VEHICLE_SLUG_LABELS_PT: dict[str, str] = {
+    **{slug: label for slug, label in zip(YOLO_COCO_VEHICLE_SLUGS.values(), YOLO_COCO_VEHICLE_LABELS_PT.values(), strict=True)},
+    "veiculo": "Veículo",
+}
+
+
+def vehicle_class_label_pt(class_id: int) -> str:
+    """Rótulo PT-BR para exibição (ex.: Carro, Moto)."""
+    return YOLO_COCO_VEHICLE_LABELS_PT.get(class_id, "Veículo")
+
+
+def vehicle_class_slug(class_id: int) -> str:
+    """Slug curto para nomes de arquivo (ex.: carro, moto)."""
+    return YOLO_COCO_VEHICLE_SLUGS.get(class_id, "veiculo")
 
 MAX_ASSOCIATION_DISTANCE_PIXELS = 120
 MAX_TRACK_MISSES = 18

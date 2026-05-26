@@ -12,12 +12,21 @@ from vehicle_flow_counter.config import (
     HOME_CAPTURE_CAPTION_VEHICLE,
     HOME_GALLERY_COLS_DEFAULT,
     HOME_GALLERY_THUMB_MAX_PX,
+    VEHICLE_SLUG_LABELS_PT,
 )
 from vehicle_flow_counter.services.capture_repository import listar_capturas
 
 
 def _caption_from_filename(filename: str) -> str:
     stem = Path(filename).stem
+    parts = stem.split("_")
+    if len(parts) >= 3:
+        vid = parts[-1]
+        slug = parts[-2]
+        if vid.isdigit():
+            label = VEHICLE_SLUG_LABELS_PT.get(slug)
+            if label:
+                return f"{label} {vid}"
     if "_vehicle_" in stem:
         _, _, vid = stem.rpartition("_vehicle_")
         if vid.isdigit():
