@@ -30,6 +30,16 @@ def _captura_sort_key(path: Path) -> tuple[float, str]:
     return (float("inf"), stem.lower())
 
 
+def limpar_capturas(captures_dir: Path | str) -> None:
+    """Remove todas as capturas ``*.jpg`` do diretório."""
+    diretorio = Path(captures_dir).expanduser().resolve()
+    if not diretorio.is_dir():
+        return
+
+    for path in diretorio.glob("*.jpg"):
+        path.unlink(missing_ok=True)
+
+
 def listar_capturas(captures_dir: Path | str) -> list[Path]:
     """Lista ``*.jpg``, ordenadas pelo timestamp no nome (cronológico, igual a ``salvar_captura``)."""
     diretorio = Path(captures_dir).expanduser().resolve()

@@ -13,6 +13,7 @@ from vehicle_flow_counter.tracking.object_tracker import TrackedBlob
 
 
 def build_tracking_view(
+    full_bgr: np.ndarray,
     roi_bgr: np.ndarray,
     mask_roi: np.ndarray,
     *,
@@ -21,14 +22,13 @@ def build_tracking_view(
     tracks: Sequence[TrackedBlob],
 ) -> np.ndarray:
     """
-    Painel combinado ROI-sized em BGR: máscara binária (branco objeto) sobre fundo,
+    Frame completo em BGR com a ROI demarcada: fora da área o vídeo fica escurecido;
 
-    fusionada discretamente com o recorte para contexto espacial — círculo azul (BGR) no centro,
-    rótulo ``{tipo} N`` (ex.: Carro 3) acima da bolha detectada e segmento/limites destacados conforme planejado na Fase 4.
+    dentro, máscara + detecções (círculo azul, rótulo ``{tipo} N``, linha de contagem) como no recorte.
     """
 
     if mask_roi.ndim != 2 or mask_roi.size == 0:
-        return np.zeros((1, 1, 3), dtype=np.uint8)
+        return _composite_full_frame_with_roi(full_bgr, roi_bgr, roi=roi)
 
     ri_h, ri_w = int(mask_roi.shape[0]), int(mask_roi.shape[1])
     if roi_bgr.shape[:2] != (ri_h, ri_w):
@@ -63,8 +63,6 @@ def build_tracking_view(
         r_dot = max(4, canvas.shape[0] // 200)
         cv2.circle(canvas, p_a, r_dot, (60, 200, 255), -1, lineType=cv2.LINE_AA)
         cv2.circle(canvas, p_b, r_dot, (60, 200, 255), -1, lineType=cv2.LINE_AA)
-
-    cv2.rectangle(canvas, (0, 0), (ri_w - 1, ri_h - 1), (96, 96, 96), thickness=1, lineType=cv2.LINE_AA)
 
     font_scale = float(max(canvas.shape[0], canvas.shape[1])) / 600.0
     font_scale = max(0.45, min(font_scale, 1.05))
@@ -118,7 +116,34 @@ def build_tracking_view(
         )
 
     fused = cv2.addWeighted(canvas, 0.70, roi_aligned, 0.30, 0.0)
-    return fused
+    return _composite_full_frame_with_roi(full_bgr, fused, roi=roi)
+
+
+def _composite_full_frame_with_roi(full_bgr: np.ndarray, roi_content: np.ndarray, *, roi: Roi) -> np.ndarray:
+    """Escurece o frame inteiro e destaca a ROI com o overlay de tracking."""
+    fh, fw = full_bgr.shape[:2]
+    canvas = cv2.addWeighted(full_bgr, 0.35, np.zeros_like(full_bgr), 0.65, 0)
+
+    x0 = max(0, min(int(roi.x), fw - 1))
+    y0 = max(0, min(int(roi.y), fh - 1))
+    x1 = max(x0 + 1, min(int(roi.x + roi.width), fw))
+    y1 = max(y0 + 1, min(int(roi.y + roi.height), fh))
+
+    rh, rw = y1 - y0, x1 - x0
+    if rh <= 0 or rw <= 0:
+        return full_bgr.copy()
+
+    overlay = roi_content
+    oh, ow = overlay.shape[:2]
+    if oh != rh or ow != rw:
+        overlay = cv2.resize(overlay, (rw, rh), interpolation=cv2.INTER_AREA)
+
+    canvas[y0:y1, x0:x1] = overlay
+
+    roi_color = (0, 200, 120)
+    thickness = max(2, min(fw, fh) // 400)
+    cv2.rectangle(canvas, (x0, y0), (x1 - 1, y1 - 1), roi_color, thickness, lineType=cv2.LINE_AA)
+    return canvas
 
 
 def clip_segment_to_rectangle(

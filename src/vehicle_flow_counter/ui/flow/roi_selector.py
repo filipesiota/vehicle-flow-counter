@@ -83,11 +83,6 @@ def run_roi_selector(full_bgr: np.ndarray, *, window_title: str, min_dimension: 
 
     cv2.setMouseCallback(_WINDOW, mouse_cb)
 
-    shortcut_hint = (
-        "Arrastar: retângulo | ENTER: OK | ESC: sair | R: limpar | "
-        f"Dim. min.: {min_dimension}px"
-    )
-
     try:
         while True:
             vis = display_img.copy()
@@ -100,17 +95,6 @@ def run_roi_selector(full_bgr: np.ndarray, *, window_title: str, min_dimension: 
                 r1 = (int(round(xf1 * disp_scale)), int(round(yf1 * disp_scale)))
                 cv2.rectangle(vis, r0, r1, (60, 200, 255), 2)
 
-            cv2.rectangle(vis, (0, vis.shape[0] - 40), (vis.shape[1], vis.shape[0]), (24, 24, 24), -1)
-            cv2.putText(
-                vis,
-                shortcut_hint,
-                (12, vis.shape[0] - 16),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.45,
-                (230, 230, 230),
-                1,
-                cv2.LINE_AA,
-            )
             cv2.imshow(_WINDOW, vis)
 
             key = cv2.waitKey(15) & 0xFF

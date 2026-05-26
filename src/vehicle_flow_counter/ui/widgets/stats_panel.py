@@ -1,4 +1,4 @@
-"""Painel lateral atualizado pela sessão de tracking (Tk main thread apenas)."""
+"""Painel lateral embutido na tela de fluxo, atualizado pela sessão de tracking."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from vehicle_flow_counter import config
 from vehicle_flow_counter.domain.models import TrackingStats
 
 
-class StatsPanel(ctk.CTkToplevel):
-    """Painel paralelo ao OpenCV mantendo totais atualizados em PT-BR."""
+class StatsPanel(ctk.CTkFrame):
+    """Totais da sessão em PT-BR; botão encerra o tracking via callback."""
 
     def __init__(
         self,
@@ -25,10 +25,6 @@ class StatsPanel(ctk.CTkToplevel):
         super().__init__(master)
 
         self._on_exit = on_exit_requested
-        self.title(config.STATS_PANEL_TITLE)
-        self.geometry("340x540")
-        self.resizable(False, True)
-        self.transient(master)
 
         hero = ctk.CTkFrame(self, fg_color="transparent")
         hero.pack(fill="both", expand=True, padx=18, pady=18)
@@ -61,7 +57,6 @@ class StatsPanel(ctk.CTkToplevel):
         ids_header = ctk.CTkLabel(
             hero, text="Rastros ativos (IDs)", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
         )
-
         ids_header.pack(anchor="w", pady=(18, 4))
 
         self._ids_body = ctk.CTkTextbox(hero, height=115, fg_color=("gray93", "#2B2B2B"))
@@ -77,14 +72,7 @@ class StatsPanel(ctk.CTkToplevel):
         )
         exit_btn.pack(fill="x", pady=(20, 0))
 
-        try:
-            self.protocol("WM_DELETE_WINDOW", self._handle_exit_clicked)
-        except Exception:
-            pass
-
     def refresh(self, snapshot: TrackingStats, *, clock: datetime | None = None) -> None:
-        """Atualização segura somente dentro do loop Tk (use ``after`` a partir da thread worker)."""
-
         try:
             if not self.winfo_exists():
                 return
@@ -92,7 +80,6 @@ class StatsPanel(ctk.CTkToplevel):
             return
 
         self._started_label.configure(text=self._started_text(snapshot.started_at))
-
         self._total_label.configure(text=str(snapshot.vehicles_counted))
 
         rpm = snapshot.vehicles_per_minute(clock)

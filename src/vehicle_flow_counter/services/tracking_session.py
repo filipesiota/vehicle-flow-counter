@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -36,12 +37,14 @@ class TrackingSession:
         stop_event: threading.Event,
         stats_update: Callable[[TrackingStats], None],
         ui_pump: Callable[[], None] | None = None,
+        frame_sink: Callable[[np.ndarray], None] | None = None,
         max_preview_side_px: int = 1050,
     ) -> TrackingStats | None:
         """
         Executa até o vídeo terminar ou ``stop_event`` ser sinalizado.
 
         ``stats_update`` e ``ui_pump`` rodam na mesma thread do caller; use ``after`` no Tk se despachar de outra thread.
+        Com ``frame_sink``, o preview vai para a UI embutida em vez de ``cv2.imshow``.
         """
         path = Path(self.entry.video_path)
         stats = TrackingStats(started_at=datetime.now())
@@ -67,11 +70,13 @@ class TrackingSession:
 
         roi = clamp_roi_to_frame(self.roi, w_frame=w_frame, h_frame=h_frame)
 
-        cv2.namedWindow(self._WINDOW_NAME, cv2.WINDOW_NORMAL)
-        title_set = getattr(cv2, "setWindowTitle", None)
-        window_title = getattr(config, "TRACKING_CV_WINDOW_TITLE", "")
-        if callable(title_set) and window_title:
-            title_set(self._WINDOW_NAME, window_title)
+        use_opencv_window = frame_sink is None
+        if use_opencv_window:
+            cv2.namedWindow(self._WINDOW_NAME, cv2.WINDOW_NORMAL)
+            title_set = getattr(cv2, "setWindowTitle", None)
+            window_title = getattr(config, "TRACKING_CV_WINDOW_TITLE", "")
+            if callable(title_set) and window_title:
+                title_set(self._WINDOW_NAME, window_title)
 
         preview_ready = False
         frame_index = 0
@@ -125,6 +130,7 @@ class TrackingSession:
                 stats_slice.last_known_ids = {blob.vehicle_id for blob in tracked}
 
                 vis = build_tracking_view(
+                    frame,
                     roi_slice,
                     fg_mask_roi,
                     roi=roi,
@@ -132,56 +138,49 @@ class TrackingSession:
                     tracks=tracked,
                 )
                 preview = maybe_scale_for_display(vis, max_side=max_preview_side_px)
-                hint = config.TRACKING_CV_WINDOW_HINT
-                stripe_h = 44
-                cv2.rectangle(
-                    preview,
-                    (0, max(0, preview.shape[0] - stripe_h)),
-                    (preview.shape[1], preview.shape[0]),
-                    (24, 24, 24),
-                    thickness=-1,
-                )
-                cv2.putText(
-                    preview,
-                    hint,
-                    (14, preview.shape[0] - 16),
-                    cv2.FONT_HERSHEY_DUPLEX,
-                    0.48,
-                    (232, 232, 232),
-                    2,
-                    lineType=cv2.LINE_AA,
-                )
-                if not preview_ready:
-                    cv2.resizeWindow(self._WINDOW_NAME, preview.shape[1], preview.shape[0])
-                    topmost_prop = getattr(cv2, "WND_PROP_TOPMOST", None)
-                    if topmost_prop is not None:
-                        try:
-                            cv2.setWindowProperty(self._WINDOW_NAME, topmost_prop, 1)
-                        except cv2.error:
-                            pass
-                    preview_ready = True
+                if use_opencv_window:
+                    if not preview_ready:
+                        cv2.resizeWindow(self._WINDOW_NAME, preview.shape[1], preview.shape[0])
+                        topmost_prop = getattr(cv2, "WND_PROP_TOPMOST", None)
+                        if topmost_prop is not None:
+                            try:
+                                cv2.setWindowProperty(self._WINDOW_NAME, topmost_prop, 1)
+                            except cv2.error:
+                                pass
+                        preview_ready = True
+                    cv2.imshow(self._WINDOW_NAME, preview)
+                elif frame_sink is not None:
+                    frame_sink(preview)
 
-                cv2.imshow(self._WINDOW_NAME, preview)
                 stats_update(stats_slice)
                 if ui_pump is not None:
                     ui_pump()
 
-                if clock is not None:
-                    delay_ms = clock.wait_until_frame_ms(frame_index)
+                if stop_event.is_set():
+                    break
+
+                if use_opencv_window:
+                    if clock is not None:
+                        delay_ms = clock.wait_until_frame_ms(frame_index)
+                    else:
+                        delay_ms = max(1, int(round(1000.0 / max(fps, 1e-3))))
+
+                    key = cv2.waitKey(delay_ms) & 0xFF
+                    if key in (27, ord("q"), ord("Q")):
+                        break
+
+                    if not self._opencv_window_alive():
+                        break
+                elif clock is not None:
+                    clock.wait_until_frame_ms(frame_index)
                 else:
-                    delay_ms = max(1, int(round(1000.0 / max(fps, 1e-3))))
-
-                key = cv2.waitKey(delay_ms) & 0xFF
-                # Permite também encerramento por tecla Q dentro da janela OpenCV como atalho.
-                if key in (27, ord("q"), ord("Q")):
-                    break
-
-                if not self._opencv_window_alive():
-                    break
+                    delay_s = max(1e-3, 1.0 / max(fps, 1e-3))
+                    time.sleep(delay_s)
 
         finally:
             cap.release()
-            cv2.destroyWindow(self._WINDOW_NAME)
+            if use_opencv_window:
+                cv2.destroyWindow(self._WINDOW_NAME)
 
         return stats
 

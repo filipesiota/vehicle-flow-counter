@@ -59,10 +59,6 @@ def run_line_selector(full_bgr: np.ndarray, roi: Roi, *, window_title: str, max_
         title_set(_WINDOW, window_title)
     cv2.setMouseCallback(_WINDOW, mouse_cb)
 
-    hint = (
-        "Dois cliques dentro do retângulo | ENTER: OK | ESC: sair | R: redesenhar pontos"
-    )
-
     roi_color = (0, 200, 120)
     line_color = (255, 64, 64)
 
@@ -102,18 +98,6 @@ def run_line_selector(full_bgr: np.ndarray, roi: Roi, *, window_title: str, max_
                 p0 = (int(round(pts_full[0].x * disp_scale)), int(round(pts_full[0].y * disp_scale)))
                 p1 = (int(round(pts_full[1].x * disp_scale)), int(round(pts_full[1].y * disp_scale)))
                 cv2.line(canvas, p0, p1, line_color, max(3, int(5 * disp_scale)), lineType=cv2.LINE_AA)
-
-            cv2.rectangle(canvas, (0, canvas.shape[0] - 40), (canvas.shape[1], canvas.shape[0]), (24, 24, 24), -1)
-            cv2.putText(
-                canvas,
-                hint,
-                (12, canvas.shape[0] - 16),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.42,
-                (230, 230, 230),
-                1,
-                cv2.LINE_AA,
-            )
 
             cv2.imshow(_WINDOW, canvas)
             key = cv2.waitKey(15) & 0xFF
