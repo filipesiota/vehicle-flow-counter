@@ -13,7 +13,7 @@ import numpy as np
 from vehicle_flow_counter import config
 from vehicle_flow_counter.domain.models import CountingLine, Roi, TrackingStats, VideoEntry
 from vehicle_flow_counter.services.capture_repository import salvar_captura
-from vehicle_flow_counter.tracking.detector import YoloVehicleDetector
+from vehicle_flow_counter.tracking.detector import MotionVehicleDetector
 from vehicle_flow_counter.tracking.line_crossing import LineCrossingState
 from vehicle_flow_counter.tracking.object_tracker import CentroidTracker
 from vehicle_flow_counter.tracking.visualizer import build_tracking_view, maybe_scale_for_display
@@ -55,7 +55,7 @@ class TrackingSession:
         realtime_sync = bool(getattr(config, "TRACKING_REALTIME_SYNC", True))
         clock = RealtimePlaybackClock(fps) if realtime_sync else None
 
-        detector = YoloVehicleDetector()
+        detector = MotionVehicleDetector()
         tracker = CentroidTracker()
         crossing_state = LineCrossingState(counting_line=self.line)
 
@@ -101,23 +101,17 @@ class TrackingSession:
                     if crossing_state.ingest(blob.vehicle_id, (gx, gy)):
                         stats.vehicles_counted += 1
                         bx, by, bw, bh = blob.bbox_roi
-                        gx0 = roi.x + max(0, bx)
-                        gy0 = roi.y + max(0, by)
+                        bx = clamp_int(bx, 0, roi_slice.shape[1] - 1)
+                        by = clamp_int(by, 0, roi_slice.shape[0] - 1)
+                        bw = clamp_int(bw, 1, roi_slice.shape[1] - bx)
+                        bh = clamp_int(bh, 1, roi_slice.shape[0] - by)
 
-                        gx1 = gx0 + int(bw)
-                        gy1 = gy0 + int(bh)
-
-                        gx0 = clamp_int(gx0, 0, frame.shape[1] - 1)
-                        gx1 = clamp_int(max(gx0 + 1, gx1), gx0 + 1, frame.shape[1])
-                        gy0 = clamp_int(gy0, 0, frame.shape[0] - 1)
-                        gy1 = clamp_int(max(gy0 + 1, gy1), gy0 + 1, frame.shape[0])
-
-                        crop = np.ascontiguousarray(frame[gy0:gy1, gx0:gx1, :])
-                        if crop.size:
+                        car_crop = np.ascontiguousarray(roi_slice[by : by + bh, bx : bx + bw, :])
+                        if car_crop.size:
                             salvar_captura(
                                 self.entry.captures_dir,
                                 vehicle_id=int(blob.vehicle_id),
-                                crop_bgr=crop,
+                                crop_bgr=car_crop,
                             )
 
                 stats_slice = TrackingStats(started_at=stats.started_at, vehicles_counted=stats.vehicles_counted)

@@ -88,10 +88,26 @@ YOLO_DEVICE = ""  # vazio = auto (CUDA se disponível, senão CPU)
 # COCO: car=2, motorcycle=3, bus=5, truck=7
 YOLO_VEHICLE_CLASS_IDS = frozenset({2, 3, 5, 7})
 
+# Detector por movimento (MOG2) — usado no fluxo principal de tracking.
+MOTION_BG_HISTORY = 500
+MOTION_BG_VAR_THRESHOLD = 16
+MOTION_DETECT_SHADOWS = True
+MOTION_LEARNING_RATE = -1  # -1 = taxa automática do OpenCV
+MOTION_MORPH_OPEN_KERNEL_SIZE = 5
+# Kernel horizontal maior: une roda, carroceria e sombra num único blob.
+MOTION_MORPH_MERGE_KERNEL_WIDTH = 31
+MOTION_MORPH_MERGE_KERNEL_HEIGHT = 11
+MOTION_FRAGMENT_MIN_AREA = 120  # fragmentos aceitos antes do agrupamento
+MOTION_MERGE_DISTANCE_PX = 40  # distância máx. entre bboxes para fundir num veículo
+MOTION_MIN_BLOB_AREA = 1_500  # área mínima do veículo já agrupado
+MOTION_MAX_BLOB_AREA = 120_000
+MOTION_MIN_ASPECT_RATIO = 0.25  # w/h
+MOTION_MAX_ASPECT_RATIO = 4.0
+
 MAX_ASSOCIATION_DISTANCE_PIXELS = 120
 MAX_TRACK_MISSES = 18
 MIN_TRACK_FRAMES_BEFORE_COUNT = 3
 TRACK_MATCH_IOU_THRESHOLD = 0.12
-TRACKING_WARMUP_FRAMES = 0
+TRACKING_WARMUP_FRAMES = 30  # frames para estabilizar o modelo de fundo MOG2
 # Mantém o vídeo no ritmo natural (1 s de vídeo ≈ 1 s real); descarta frames se a inferência atrasar.
 TRACKING_REALTIME_SYNC = True
