@@ -1,6 +1,6 @@
 # Contador de fluxo veicular (vehicle-flow-counter)
 
-Aplicativo desktop em **Python 3.12** para contar veículos que atravessam uma **linha de contagem** desenhada em um vídeo de rodovia. Utiliza **CustomTkinter** para a interface principal e **OpenCV** para seleção de ROI e linha, detecção baseada em subtração de fundo (**MOG2**) e playback do tracking — **sem modelos de aprendizado de máquina**.
+Aplicativo desktop em **Python 3.12** para contar veículos que atravessam uma **linha de contagem** desenhada em um vídeo de rodovia. Utiliza **CustomTkinter** para a interface principal, **OpenCV** para seleção de ROI e linha, e **[Ultralytics YOLO26](https://github.com/ultralytics/ultralytics)** para detecção de veículos (carro, moto, ônibus, caminhão).
 
 ## Requisitos
 
@@ -19,7 +19,9 @@ uv venv
 uv sync
 ```
 
-Isso instala `opencv-python`, `customtkinter`, `pillow` e `numpy` conforme o `pyproject.toml`.
+Isso instala `opencv-python`, `customtkinter`, `pillow`, `numpy`, `ultralytics` (PyTorch incluído) e demais dependências conforme o `pyproject.toml`.
+
+Na primeira execução do tracking, o modelo **`yolo26n.pt`** é baixado automaticamente para `data/models/`.
 
 ## Executar
 
@@ -40,15 +42,16 @@ uv run vehicle-flow-counter
 3. **Iniciar verificação de fluxo** — Abre um assistente com janelas **OpenCV**:
    - desenhar a **região de interesse (ROI)** com um retângulo;
    - marcar dois pontos para a **linha de contagem** dentro da ROI (idealmente perpendicular ao fluxo esperado).
-4. **Tracking em tempo real** — Janela do vídeo com máscara, centróides e rótulos; painel lateral com estatísticas (início da sessão, total de veículos, média veículos/minuto). Ao **sair do fluxo** (botão ou tecla informada na janela), a sessão encerra.
+4. **Tracking em tempo real** — Janela do vídeo com máscara das detecções, bounding boxes e rótulos; painel lateral com estatísticas (início da sessão, total de veículos, média veículos/minuto). Ao **sair do fluxo** (botão ou tecla informada na janela), a sessão encerra.
 
-**Contagem**: considera-se a passagem quando o **centro do bounding box** do blob cruza a linha dentro da ROI — não na simples entrada da ROI.
+**Contagem**: considera-se a passagem quando o **centro do bounding box** do veículo cruza a linha dentro da ROI — não na simples entrada da ROI.
 
 ## Armazenamento de dados (`data/`)
 
 A pasta **`data/`** fica na raiz do projeto (está no `.gitignore` e não é versionada):
 
 ```text
+data/models/yolo26n.pt
 data/videos/<nome-da-pasta-do-video>/video.mp4
 data/videos/<nome-da-pasta-do-video>/capturas/*.jpg
 ```
@@ -68,18 +71,33 @@ src/vehicle_flow_counter/
 ├── config.py            # caminhos, strings da UI em PT-BR, constantes de visão
 ├── domain/models.py      # VideoEntry, Roi, CountingLine, TrackingStats…
 ├── services/             # vídeo, capturas, sessão de tracking
-├── tracking/             # detector MOG2, tracker por centróides, linha cruzamento, visualização
+├── tracking/             # detector YOLO26, tracker por centróides, linha cruzamento, visualização
 ├── ui/                   # app, telas home/upload, wizard ROI/linha, painel stats, galeria
 └── utils/               # sanitização de nomes, FPS e leitura de frames
 ```
 
+## Configuração do detector (YOLO26)
+
+Constantes em `config.py`:
+
+| Constante | Padrão | Descrição |
+|-----------|--------|-----------|
+| `YOLO_MODEL` | `yolo26n.pt` | Modelo Ultralytics (nano — rápido; use `yolo26s.pt` etc. para mais precisão) |
+| `YOLO_CONFIDENCE` | `0.35` | Limiar mínimo de confiança |
+| `YOLO_IMGSZ` | `640` | Tamanho de inferência |
+| `YOLO_DEVICE` | `""` (auto) | `cpu`, `0` (GPU), etc. |
+
+Classes COCO filtradas: carro, motocicleta, ônibus, caminhão.
+
 ## Limitações conhecidas
 
-- Iluminação variável forte, reflexos e má sombra podem piorar a subtração de fundo (**MOG2**).
-- Oclusões (veículos sobrepostos) e blobs que se mesclam podem trocar **IDs** entre frames — aceitável na v1 ao custo de contagens menos estáveis quando os veículos passam muito próximos.
+- Veículos muito pequenos ou parcialmente oclusos podem não ser detectados pelo modelo nano.
+- Oclusões entre veículos próximos podem trocar **IDs** entre frames — aceitável na v1.
 - **ROI e linha** não são gravadas entre sessões: precisam ser redefinidas a cada nova verificação.
-- Funciona bem como experimento pedagogico/engineering; cenários complexos ao vivo exigiriam sensores dedicados ou modelos especializados.
+- Inferência em CPU é mais lenta; GPU NVIDIA acelera significativamente.
 
 ## Licença e contribuições
 
 Este repositório é um projeto pessoal; adapte livremente para o seu cenário local.
+
+O pacote **ultralytics** é licenciado sob [AGPL-3.0](https://github.com/ultralytics/ultralytics/blob/main/LICENSE); verifique os termos se usar em produção comercial.

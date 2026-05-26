@@ -10,6 +10,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # Armazenamento local (pastas ignoradas no git).
 DATA_DIR = _PROJECT_ROOT / "data"
 VIDEOS_DIR = DATA_DIR / "videos"
+MODELS_DIR = DATA_DIR / "models"
 
 # UI — títulos e mensagens em PT-BR.
 APP_TITLE = "Contador de fluxo veicular"
@@ -79,14 +80,18 @@ BTN_EXIT_TRACKING_FLOW = "Sair do fluxo"
 TRACKING_OPEN_FAILED_TITLE = "Falha ao abrir vídeo"
 TRACKING_OPEN_FAILED_MESSAGE = "Não foi possível abrir este arquivo MP4 para leitura contínua."
 
-# Detector / tracking — valores razoáveis para v1; ajustados nas fases de visão computacional.
-MIN_CONTOUR_AREA_PIXELS = 800
+# Detector YOLO26 / tracking — valores razoáveis para v1.
+YOLO_MODEL = str(MODELS_DIR / "yolo26n.pt")
+YOLO_CONFIDENCE = 0.35
+YOLO_IMGSZ = 480
+YOLO_DEVICE = ""  # vazio = auto (CUDA se disponível, senão CPU)
+# COCO: car=2, motorcycle=3, bus=5, truck=7
+YOLO_VEHICLE_CLASS_IDS = frozenset({2, 3, 5, 7})
+
 MAX_ASSOCIATION_DISTANCE_PIXELS = 120
 MAX_TRACK_MISSES = 18
-MIN_TRACK_FRAMES_BEFORE_COUNT = 5
-MORPH_KERNEL_SIZE = (7, 7)
-MORPH_CLOSE_ITERATIONS = 2
-BLOB_MERGE_IOU_THRESHOLD = 0.08
-BLOB_MERGE_CENTER_DISTANCE_RATIO = 0.85
+MIN_TRACK_FRAMES_BEFORE_COUNT = 3
 TRACK_MATCH_IOU_THRESHOLD = 0.12
-TRACKING_WARMUP_FRAMES = 45
+TRACKING_WARMUP_FRAMES = 0
+# Mantém o vídeo no ritmo natural (1 s de vídeo ≈ 1 s real); descarta frames se a inferência atrasar.
+TRACKING_REALTIME_SYNC = True

@@ -13,11 +13,11 @@ import numpy as np
 from vehicle_flow_counter import config
 from vehicle_flow_counter.domain.models import CountingLine, Roi, TrackingStats, VideoEntry
 from vehicle_flow_counter.services.capture_repository import salvar_captura
-from vehicle_flow_counter.tracking.detector import BackgroundBlobDetector
+from vehicle_flow_counter.tracking.detector import YoloVehicleDetector
 from vehicle_flow_counter.tracking.line_crossing import LineCrossingState
 from vehicle_flow_counter.tracking.object_tracker import CentroidTracker
 from vehicle_flow_counter.tracking.visualizer import build_tracking_view, maybe_scale_for_display
-from vehicle_flow_counter.utils.video_utils import video_fps_estimate
+from vehicle_flow_counter.utils.video_utils import RealtimePlaybackClock, video_fps_estimate
 
 
 class TrackingSession:
@@ -52,9 +52,10 @@ class TrackingSession:
             return None
 
         fps = video_fps_estimate(cap)
-        pause_s = max(1.0 / max(fps, 1e-3), 0.005)
+        realtime_sync = bool(getattr(config, "TRACKING_REALTIME_SYNC", True))
+        clock = RealtimePlaybackClock(fps) if realtime_sync else None
 
-        detector = BackgroundBlobDetector()
+        detector = YoloVehicleDetector()
         tracker = CentroidTracker()
         crossing_state = LineCrossingState(counting_line=self.line)
 
@@ -79,6 +80,9 @@ class TrackingSession:
 
         try:
             while not stop_event.is_set():
+                if clock is not None:
+                    frame_index = clock.skip_frames_if_behind(cap, frame_index)
+
                 ok, frame = cap.read()
                 if not ok or frame is None:
                     break
@@ -161,7 +165,11 @@ class TrackingSession:
                 if ui_pump is not None:
                     ui_pump()
 
-                delay_ms = max(1, int(round(pause_s * 1000)))
+                if clock is not None:
+                    delay_ms = clock.wait_until_frame_ms(frame_index)
+                else:
+                    delay_ms = max(1, int(round(1000.0 / max(fps, 1e-3))))
+
                 key = cv2.waitKey(delay_ms) & 0xFF
                 # Permite também encerramento por tecla Q dentro da janela OpenCV como atalho.
                 if key in (27, ord("q"), ord("Q")):

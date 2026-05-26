@@ -109,8 +109,8 @@ class StatsPanel(ctk.CTkToplevel):
             )
         else:
             snippet = (
-                "Ainda não detectamos blobs estáveis suficientemente próximos da linha. "
-                "Assim que o MOG2 aprender o fundo, os totais aparecem ali em cima."
+                "Ainda não detectamos veículos estáveis suficientemente próximos da linha. "
+                "Assim que o YOLO26 identificar veículos na ROI, os totais aparecem ali em cima."
             )
 
         self._ids_body.configure(state="normal")

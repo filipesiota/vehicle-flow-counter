@@ -37,7 +37,7 @@ class CentroidTracker:
     """
     Mantém IDs incrementais estáveis associando detecções por IoU e distância de centróide.
 
-    Tracks não associadas por vários frames consecutivos são descartadas (falhas temporárias MOG2).
+    Tracks não associadas por vários frames consecutivos são descartadas (falhas temporárias de detecção).
     """
 
     def __init__(

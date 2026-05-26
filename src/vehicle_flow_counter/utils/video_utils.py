@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import cv2
@@ -36,3 +37,40 @@ def video_fps_estimate(capture) -> float:
     if fps != fps or fps < 1e-2 or fps > 240.0:
         return 30.0
     return fps
+
+
+class RealtimePlaybackClock:
+    """
+    Relógio de playback: espera só quando estamos adiantados e permite pular frames
+    quando o processamento atrasa, mantendo ~1 s de vídeo por 1 s real.
+    """
+
+    def __init__(self, fps: float) -> None:
+        self._fps = max(float(fps), 1e-3)
+        self._started_at = time.perf_counter()
+
+    @property
+    def fps(self) -> float:
+        return self._fps
+
+    def expected_frame_index(self) -> int:
+        elapsed = time.perf_counter() - self._started_at
+        return max(0, int(elapsed * self._fps))
+
+    def skip_frames_if_behind(self, capture: cv2.VideoCapture, current_index: int) -> int:
+        """Descarta frames não decodificados até alcançar a linha do tempo natural."""
+        target = self.expected_frame_index()
+        while current_index < target:
+            if not capture.grab():
+                break
+            current_index += 1
+        return current_index
+
+    def wait_until_frame_ms(self, frame_index: int) -> int:
+        """Milisegundos para ``waitKey`` até o instante natural do frame atual."""
+        target_time = frame_index / self._fps
+        elapsed = time.perf_counter() - self._started_at
+        remaining = target_time - elapsed
+        if remaining <= 0.001:
+            return 1
+        return max(1, int(round(remaining * 1000)))

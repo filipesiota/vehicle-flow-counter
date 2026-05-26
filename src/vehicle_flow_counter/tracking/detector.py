@@ -1,11 +1,14 @@
-"""Detecção de blobs em movimento (MOG2 + morfologia) sobre o recorte da ROI."""
+"""Detecção de veículos com Ultralytics YOLO26 sobre o recorte da ROI."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import cv2
 import numpy as np
+import torch
+from ultralytics import YOLO
 
 from vehicle_flow_counter import config
 
@@ -20,198 +23,136 @@ class BlobDetection:
     contour_roi: np.ndarray  # formato N x 1 x 2, int32, coordenadas na ROI
 
 
-class BackgroundBlobDetector:
+class YoloVehicleDetector:
     """
-    Subtração de fundo MOG2 aplicada apenas à região recortada (ROI).
+    Detector de veículos baseado em YOLO26 (COCO: car, motorcycle, bus, truck).
 
-    A morfologia reduz ruído; apenas contornos externos acima da área mínima são retornados.
+    Executa inferência apenas na ROI recortada; devolve caixas filtradas por confiança
+    e classes veiculares, mais uma máscara binária derivada das detecções para visualização.
     """
 
     def __init__(
         self,
         *,
-        min_area: int | None = None,
-        morph_kernel_size: tuple[int, int] | None = None,
-        mog2_variant_threshold: float = 16.0,
-        mog2_detect_shadows: bool = False,
+        model_path: str | None = None,
+        confidence: float | None = None,
+        imgsz: int | None = None,
+        vehicle_class_ids: frozenset[int] | None = None,
+        device: str | None = None,
     ) -> None:
-        min_area_val = config.MIN_CONTOUR_AREA_PIXELS if min_area is None else min_area
-        self._min_area = max(1, int(min_area_val))
-        ks = morph_kernel_size or config.MORPH_KERNEL_SIZE
-        self._kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, ks)
-        self._kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, ks)
+        self._model_path = model_path or config.YOLO_MODEL
+        self._confidence = float(config.YOLO_CONFIDENCE if confidence is None else confidence)
+        self._imgsz = int(config.YOLO_IMGSZ if imgsz is None else imgsz)
+        self._vehicle_class_ids = vehicle_class_ids or config.YOLO_VEHICLE_CLASS_IDS
+        self._device = self._resolve_device(device)
+        self._use_half = self._device.startswith("cuda")
+        self._model = YOLO(self._resolve_model_weights())
+        self._warmup()
 
-        self._subtractor = cv2.createBackgroundSubtractorMOG2(
-            detectShadows=mog2_detect_shadows,
-            varThreshold=mog2_variant_threshold,
+    def _resolve_device(self, device: str | None) -> str:
+        if device:
+            return device
+        configured = config.YOLO_DEVICE.strip()
+        if configured:
+            return configured
+        return "cuda:0" if torch.cuda.is_available() else "cpu"
+
+    def _warmup(self) -> None:
+        dummy = np.zeros((64, 64, 3), dtype=np.uint8)
+        self._model.predict(
+            dummy,
+            conf=self._confidence,
+            classes=sorted(self._vehicle_class_ids),
+            imgsz=self._imgsz,
+            device=self._device,
+            half=self._use_half,
+            verbose=False,
         )
 
     def reset(self) -> None:
-        """Recria o subtrator (útil ao reiniciar leitura do vídeo desde o frame 0)."""
-        self._subtractor = cv2.createBackgroundSubtractorMOG2(
-            detectShadows=False,
-            varThreshold=16.0,
-        )
+        """No-op — YOLO26 não requer estado entre frames (mantido por compatibilidade)."""
+
+    def _resolve_model_weights(self) -> str:
+        """Garante pesos em ``data/models/``; baixa automaticamente na primeira execução."""
+        target = Path(self._model_path)
+        if target.is_file():
+            return str(target)
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        weight_name = target.name
+        bootstrap = YOLO(weight_name)
+        downloaded = Path.cwd() / weight_name
+        if downloaded.is_file() and not target.is_file():
+            downloaded.replace(target)
+            return str(target)
+
+        model_file = getattr(getattr(bootstrap, "model", None), "pt_path", None)
+        if model_file and Path(model_file).is_file():
+            return str(model_file)
+
+        return weight_name
 
     def detect(self, roi_bgr: np.ndarray) -> tuple[list[BlobDetection], np.ndarray]:
         """
-        Processa uma ROI em BGR devolvendo detecções e máscara binária foreground (ROI).
+        Processa uma ROI em BGR devolvendo detecções e máscara binária (ROI).
 
-        A máscara é uint8 em {0, 255}: branco=frente planeada após threshold+morfologia.
+        A máscara é uint8 em {0, 255}: branco=região ocupada por detecções YOLO.
         """
         if roi_bgr.size == 0:
             return [], np.zeros((0, 0), dtype=np.uint8)
 
-        gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
-        fg_raw = self._subtractor.apply(gray, learningRate=-1)
+        ri_h, ri_w = roi_bgr.shape[:2]
+        mask = np.zeros((ri_h, ri_w), dtype=np.uint8)
 
-        # MOG2 com sombras pode marcar sombras como 127; binarização simples.
-        _, binary = cv2.threshold(fg_raw, 127, 255, cv2.THRESH_BINARY)
-        opened = cv2.morphologyEx(binary, cv2.MORPH_OPEN, self._kernel_open, iterations=1)
-        close_iters = max(1, int(getattr(config, "MORPH_CLOSE_ITERATIONS", 1)))
-        closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, self._kernel_close, iterations=close_iters)
+        predict_kwargs: dict = {
+            "conf": self._confidence,
+            "classes": sorted(self._vehicle_class_ids),
+            "imgsz": self._imgsz,
+            "device": self._device,
+            "half": self._use_half,
+            "max_det": 32,
+            "verbose": False,
+        }
 
-        contours, _hier = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        results = self._model.predict(roi_bgr, **predict_kwargs)
+        if not results:
+            return [], mask
+
+        boxes = results[0].boxes
+        if boxes is None or len(boxes) == 0:
+            return [], mask
 
         blobs: list[BlobDetection] = []
-        ri_h, ri_w = closed.shape[:2]
-        for c in contours:
-            area = float(cv2.contourArea(c))
-            if area < self._min_area:
-                continue
-
-            bx, by, bw, bh = cv2.boundingRect(c)
+        xyxy = boxes.xyxy.cpu().numpy()
+        for row in xyxy:
+            x1, y1, x2, y2 = (float(v) for v in row[:4])
+            bx = int(max(0, min(round(x1), ri_w - 1)))
+            by = int(max(0, min(round(y1), ri_h - 1)))
+            bx2 = int(max(bx + 1, min(round(x2), ri_w)))
+            by2 = int(max(by + 1, min(round(y2), ri_h)))
+            bw = bx2 - bx
+            bh = by2 - by
             if bw < 2 or bh < 2:
                 continue
 
-            moments = cv2.moments(c)
-            denom = moments["m00"]
-            if denom <= 1e-6:
-                continue
-            cx_loc = int(moments["m10"] / denom)
-            cy_loc = int(moments["m01"] / denom)
-            cx_loc = max(0, min(cx_loc, ri_w - 1))
-            cy_loc = max(0, min(cy_loc, ri_h - 1))
+            cx = int(round((bx + bx2) / 2))
+            cy = int(round((by + by2) / 2))
+            cx = max(0, min(cx, ri_w - 1))
+            cy = max(0, min(cy, ri_h - 1))
 
-            c_loc = np.asarray(c, dtype=np.int32)
+            contour = np.array(
+                [[[bx, by], [bx2, by], [bx2, by2], [bx, by2]]],
+                dtype=np.int32,
+            )
+            cv2.fillPoly(mask, [contour.reshape(-1, 2)], 255)
 
             blobs.append(
                 BlobDetection(
-                    cx=cx_loc,
-                    cy=cy_loc,
+                    cx=cx,
+                    cy=cy,
                     bbox_xywh=(bx, by, bw, bh),
-                    contour_roi=c_loc,
+                    contour_roi=contour,
                 )
             )
 
-        merged = _merge_nearby_blobs(
-            blobs,
-            iou_threshold=float(getattr(config, "BLOB_MERGE_IOU_THRESHOLD", 0.08)),
-            center_distance_ratio=float(getattr(config, "BLOB_MERGE_CENTER_DISTANCE_RATIO", 0.85)),
-        )
-        return merged, closed
-
-
-def _merge_nearby_blobs(
-    blobs: list[BlobDetection],
-    *,
-    iou_threshold: float,
-    center_distance_ratio: float,
-) -> list[BlobDetection]:
-    """Agrupa contornos sobrepostos ou muito próximos do mesmo veículo."""
-    n = len(blobs)
-    if n <= 1:
-        return blobs
-
-    parent = list(range(n))
-
-    def find(i: int) -> int:
-        while parent[i] != i:
-            parent[i] = parent[parent[i]]
-            i = parent[i]
-        return i
-
-    def union(i: int, j: int) -> None:
-        ri, rj = find(i), find(j)
-        if ri != rj:
-            parent[rj] = ri
-
-    for i in range(n):
-        for j in range(i + 1, n):
-            if _should_merge_blobs(
-                blobs[i],
-                blobs[j],
-                iou_threshold=iou_threshold,
-                center_distance_ratio=center_distance_ratio,
-            ):
-                union(i, j)
-
-    groups: dict[int, list[BlobDetection]] = {}
-    for idx, blob in enumerate(blobs):
-        groups.setdefault(find(idx), []).append(blob)
-
-    return [_merge_blob_group(group) for group in groups.values()]
-
-
-def _should_merge_blobs(
-    a: BlobDetection,
-    b: BlobDetection,
-    *,
-    iou_threshold: float,
-    center_distance_ratio: float,
-) -> bool:
-    if _detection_bbox_iou(a.bbox_xywh, b.bbox_xywh) >= iou_threshold:
-        return True
-
-    _ax, _ay, aw, ah = a.bbox_xywh
-    _bx, _by, bw, bh = b.bbox_xywh
-    max_side = max(aw, ah, bw, bh, 1)
-    dx = float(a.cx - b.cx)
-    dy = float(a.cy - b.cy)
-    dist = (dx * dx + dy * dy) ** 0.5
-    return dist <= max_side * center_distance_ratio
-
-
-def _detection_bbox_iou(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> float:
-    ax, ay, aw, ah = a
-    bx, by, bw, bh = b
-    ax2, ay2 = ax + aw, ay + ah
-    bx2, by2 = bx + bw, by + bh
-
-    ix1, iy1 = max(ax, bx), max(ay, by)
-    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
-    iw, ih = max(0, ix2 - ix1), max(0, iy2 - iy1)
-    inter = float(iw * ih)
-    if inter <= 0.0:
-        return 0.0
-
-    union = float(aw * ah + bw * bh) - inter
-    if union <= 0.0:
-        return 0.0
-    return inter / union
-
-
-def _merge_blob_group(group: list[BlobDetection]) -> BlobDetection:
-    if len(group) == 1:
-        return group[0]
-
-    points = np.vstack([blob.contour_roi.reshape(-1, 2) for blob in group])
-    hull = cv2.convexHull(points.astype(np.float32).reshape(-1, 1, 2))
-    hull_i32 = hull.astype(np.int32)
-
-    bx, by, bw, bh = cv2.boundingRect(hull_i32)
-    moments = cv2.moments(hull_i32)
-    denom = moments["m00"]
-    if denom <= 1e-6:
-        cx = int(round(sum(blob.cx for blob in group) / len(group)))
-        cy = int(round(sum(blob.cy for blob in group) / len(group)))
-    else:
-        cx = int(moments["m10"] / denom)
-        cy = int(moments["m01"] / denom)
-
-    return BlobDetection(
-        cx=cx,
-        cy=cy,
-        bbox_xywh=(bx, by, bw, bh),
-        contour_roi=hull_i32,
-    )
+        return blobs, mask
