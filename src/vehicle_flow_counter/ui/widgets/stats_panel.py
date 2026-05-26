@@ -29,10 +29,6 @@ class StatsPanel(ctk.CTkToplevel):
         self.geometry("340x540")
         self.resizable(False, True)
         self.transient(master)
-        try:
-            self.attributes("-topmost", True)
-        except Exception:
-            pass
 
         hero = ctk.CTkFrame(self, fg_color="transparent")
         hero.pack(fill="both", expand=True, padx=18, pady=18)

@@ -91,48 +91,57 @@ class VehicleFlowCounterApp(ctk.CTk):
         self._launch_tracking_workspace(entry=entry, roi=roi, line=line)
 
     def _launch_tracking_workspace(self, *, entry: VideoEntry, roi: Roi, line: CountingLine) -> None:
-        """Abre o painel Tk e despacha o loop pesado para uma thread compatível com OpenCV."""
+        """Abre o painel Tk e executa o loop OpenCV na thread principal (mesma do wizard ROI/linha)."""
         baseline = TrackingStats(started_at=datetime.now())
 
         stop_event = threading.Event()
         stats_panel = StatsPanel(self, stats=baseline, on_exit_requested=stop_event.set)
 
         def on_stats(update: TrackingStats) -> None:
-            def _paint(snap: TrackingStats = update) -> None:
-                try:
-                    if stats_panel.winfo_exists():
-                        stats_panel.refresh(snap)
-                except Exception:
-                    return
-
-            self.after(0, _paint)
-
-        def worker() -> None:
-            """Processa vídeo até o usuário solicitar pausa."""
-
-            session = TrackingSession(entry, roi, line)
-            snapshot: TrackingStats | None = None
-
             try:
-                snapshot = session.run(stop_event=stop_event, stats_update=on_stats)
+                if stats_panel.winfo_exists():
+                    stats_panel.refresh(update)
             except Exception:
-                snapshot = None
-            finally:
+                return
 
-                def finalize_session(
-                    snap: TrackingStats | None = snapshot,
-                    ent: VideoEntry = entry,
-                ) -> None:
-                    if snap is None:
-                        messagebox.showerror(TRACKING_OPEN_FAILED_TITLE, TRACKING_OPEN_FAILED_MESSAGE)
-                    else:
-                        self._home.reload_captures_for_entry(ent)
-                    try:
-                        if stats_panel.winfo_exists():
-                            stats_panel.destroy()
-                    except Exception:
-                        pass
+        def pump_ui() -> None:
+            try:
+                stats_panel.update_idletasks()
+                self.update_idletasks()
+                self.update()
+            except Exception:
+                return
 
-                self.after(0, finalize_session)
+        iconified = False
+        try:
+            self.iconify()
+            iconified = True
+        except Exception:
+            pass
 
-        threading.Thread(target=worker, name="tracking-session", daemon=True).start()
+        session = TrackingSession(entry, roi, line)
+        snapshot: TrackingStats | None = None
+        try:
+            snapshot = session.run(
+                stop_event=stop_event,
+                stats_update=on_stats,
+                ui_pump=pump_ui,
+            )
+        except Exception:
+            snapshot = None
+        finally:
+            if iconified:
+                try:
+                    self.deiconify()
+                    self.lift()
+                except Exception:
+                    pass
+            if snapshot is None:
+                messagebox.showerror(TRACKING_OPEN_FAILED_TITLE, TRACKING_OPEN_FAILED_MESSAGE)
+            else:
+                self._home.reload_captures_for_entry(entry)
+            try:
+                if stats_panel.winfo_exists():
+                    stats_panel.destroy()
+            except Exception:
+                pass

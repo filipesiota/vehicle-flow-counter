@@ -35,12 +35,13 @@ class TrackingSession:
         *,
         stop_event: threading.Event,
         stats_update: Callable[[TrackingStats], None],
+        ui_pump: Callable[[], None] | None = None,
         max_preview_side_px: int = 1050,
     ) -> TrackingStats | None:
         """
         Executa até o vídeo terminar ou ``stop_event`` ser sinalizado.
 
-        ``stats_update`` será chamado a partir da worker thread; marshalize atualizações de UI pelo ``after`` no Tk se necessário.
+        ``stats_update`` e ``ui_pump`` rodam na mesma thread do caller; use ``after`` no Tk se despachar de outra thread.
         """
         path = Path(self.entry.video_path)
         stats = TrackingStats(started_at=datetime.now())
@@ -71,17 +72,26 @@ class TrackingSession:
         if callable(title_set) and window_title:
             title_set(self._WINDOW_NAME, window_title)
 
+        preview_ready = False
+        frame_index = 0
+        warmup_frames = max(0, int(getattr(config, "TRACKING_WARMUP_FRAMES", 0)))
+        min_frames_before_count = max(1, int(getattr(config, "MIN_TRACK_FRAMES_BEFORE_COUNT", 1)))
+
         try:
             while not stop_event.is_set():
                 ok, frame = cap.read()
                 if not ok or frame is None:
                     break
 
+                frame_index += 1
                 roi_slice = crop_roi_safe(frame, roi)
                 blobs, fg_mask_roi = detector.detect(roi_slice)
                 tracked = tracker.update(blobs)
 
+                counting_enabled = frame_index > warmup_frames
                 for blob in tracked:
+                    if not counting_enabled or blob.frames_alive < min_frames_before_count:
+                        continue
                     gx = roi.x + int(blob.cx)
                     gy = roi.y + int(blob.cy)
                     if crossing_state.ingest(blob.vehicle_id, (gx, gy)):
@@ -108,7 +118,6 @@ class TrackingSession:
 
                 stats_slice = TrackingStats(started_at=stats.started_at, vehicles_counted=stats.vehicles_counted)
                 stats_slice.last_known_ids = {blob.vehicle_id for blob in tracked}
-                stats_update(stats_slice)
 
                 vis = build_tracking_view(
                     roi_slice,
@@ -137,7 +146,20 @@ class TrackingSession:
                     2,
                     lineType=cv2.LINE_AA,
                 )
+                if not preview_ready:
+                    cv2.resizeWindow(self._WINDOW_NAME, preview.shape[1], preview.shape[0])
+                    topmost_prop = getattr(cv2, "WND_PROP_TOPMOST", None)
+                    if topmost_prop is not None:
+                        try:
+                            cv2.setWindowProperty(self._WINDOW_NAME, topmost_prop, 1)
+                        except cv2.error:
+                            pass
+                    preview_ready = True
+
                 cv2.imshow(self._WINDOW_NAME, preview)
+                stats_update(stats_slice)
+                if ui_pump is not None:
+                    ui_pump()
 
                 delay_ms = max(1, int(round(pause_s * 1000)))
                 key = cv2.waitKey(delay_ms) & 0xFF
