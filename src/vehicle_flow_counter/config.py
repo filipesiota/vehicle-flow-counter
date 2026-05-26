@@ -19,9 +19,19 @@ BTN_UPLOAD_NEW_VIDEO = "Enviar novo vídeo"
 HOME_VIDEOS_HEADER = "Vídeos armazenados"
 HOME_NO_VIDEOS = "Nenhum vídeo encontrado. Envie um MP4 para começar."
 HOME_DETAILS_HEADER = "Detalhes do vídeo"
-HOME_DETAILS_PLACEHOLDER = "Selecione um vídeo na lista. A galeria de capturas será mostrada aqui mais tarde."
+HOME_DETAILS_NO_SELECTION = (
+    "Selecione um vídeo na lista à esquerda para ver caminho da pasta e miniaturas das capturas."
+)
 HOME_SELECTED_LABEL = "Pasta:"
 HOME_SELECTED_PATH = "Caminho do arquivo:"
+HOME_GALLERY_HEADER = "Capturas"
+HOME_GALLERY_EMPTY = (
+    "Nenhuma captura neste vídeo. Execute uma verificação de fluxo e feche quando terminar;"
+    " as imagens são salvas quando um veículo cruza a linha de contagem."
+)
+HOME_GALLERY_COLS_DEFAULT = 3
+HOME_GALLERY_THUMB_MAX_PX = 118
+HOME_CAPTURE_CAPTION_VEHICLE = "Veículo "
 
 # Envio / upload
 UPLOAD_TITLE = "Enviar vídeo"
@@ -53,6 +63,21 @@ FLOW_CONFIGURED_MESSAGE = (
     "O passo seguinte será o tracking em tempo real (próxima fase)."
 )
 FLOW_CONFIGURE_ERROR_TITLE = "Não foi possível ler o vídeo"
+
+TRACKING_CV_WINDOW_TITLE = (
+    "Passo 6/6 — Tracking em tempo real (pressione ESC, Q ou use o botão para encerrar)."
+)
+TRACKING_CV_WINDOW_HINT = (
+    "Acompanhe a máscara e os rótulos; estatísticas na janela lateral | ESC ou Q encerra"
+)
+
+STATS_PANEL_TITLE = "Estatísticas da sessão"
+STATS_PANEL_STARTED_LABEL = "Início:"
+STATS_PANEL_TOTAL_LABEL = "Veículos contados:"
+STATS_PANEL_RATE_LABEL = "Média (veículos/min):"
+BTN_EXIT_TRACKING_FLOW = "Sair do fluxo"
+TRACKING_OPEN_FAILED_TITLE = "Falha ao abrir vídeo"
+TRACKING_OPEN_FAILED_MESSAGE = "Não foi possível abrir este arquivo MP4 para leitura contínua."
 
 # Detector / tracking — valores razoáveis para v1; ajustados nas fases de visão computacional.
 MIN_CONTOUR_AREA_PIXELS = 800

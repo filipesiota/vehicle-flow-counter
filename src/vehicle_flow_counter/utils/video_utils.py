@@ -26,3 +26,13 @@ def read_first_frame(video_path: Path | str) -> np.ndarray:
         msg = "Nenhum frame pôde ser lido neste arquivo."
         raise ValueError(msg)
     return np.asarray(frame, dtype=np.uint8)
+
+
+def video_fps_estimate(capture) -> float:
+    """
+    Extrai FPS declarado pelo arquivo; faz fallback quando o codecs retorna valores absurdos (0 ou >240).
+    """
+    fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
+    if fps != fps or fps < 1e-2 or fps > 240.0:
+        return 30.0
+    return fps

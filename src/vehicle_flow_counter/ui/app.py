@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+from datetime import datetime
 from tkinter import messagebox
 
 import customtkinter as ctk
@@ -9,13 +11,15 @@ import customtkinter as ctk
 from vehicle_flow_counter.config import (
     APP_TITLE,
     FLOW_CONFIGURE_ERROR_TITLE,
-    FLOW_CONFIGURED_MESSAGE,
-    FLOW_CONFIGURED_TITLE,
+    TRACKING_OPEN_FAILED_MESSAGE,
+    TRACKING_OPEN_FAILED_TITLE,
 )
-from vehicle_flow_counter.domain.models import VideoEntry
+from vehicle_flow_counter.domain.models import CountingLine, Roi, TrackingStats, VideoEntry
+from vehicle_flow_counter.services.tracking_session import TrackingSession
 from vehicle_flow_counter.ui.flow.flow_controller import FlowController
 from vehicle_flow_counter.ui.screens.home_screen import HomeScreen
 from vehicle_flow_counter.ui.screens.upload_screen import UploadScreen
+from vehicle_flow_counter.ui.widgets.stats_panel import StatsPanel
 
 
 class VehicleFlowCounterApp(ctk.CTk):
@@ -71,6 +75,7 @@ class VehicleFlowCounterApp(ctk.CTk):
 
     def _start_flow_wizard(self, entry: VideoEntry) -> None:
         """Executa seleção ROI + linha; cancelar (ESC) apenas fecha sem mensagem."""
+
         try:
             controller = FlowController()
             outcome = controller.run(entry)
@@ -81,5 +86,53 @@ class VehicleFlowCounterApp(ctk.CTk):
         if outcome is None:
             return
 
-        _roi, _line = outcome  # placeholders para a Fase 4 (sessão de tracking)
-        messagebox.showinfo(FLOW_CONFIGURED_TITLE, FLOW_CONFIGURED_MESSAGE)
+        roi, line = outcome
+
+        self._launch_tracking_workspace(entry=entry, roi=roi, line=line)
+
+    def _launch_tracking_workspace(self, *, entry: VideoEntry, roi: Roi, line: CountingLine) -> None:
+        """Abre o painel Tk e despacha o loop pesado para uma thread compatível com OpenCV."""
+        baseline = TrackingStats(started_at=datetime.now())
+
+        stop_event = threading.Event()
+        stats_panel = StatsPanel(self, stats=baseline, on_exit_requested=stop_event.set)
+
+        def on_stats(update: TrackingStats) -> None:
+            def _paint(snap: TrackingStats = update) -> None:
+                try:
+                    if stats_panel.winfo_exists():
+                        stats_panel.refresh(snap)
+                except Exception:
+                    return
+
+            self.after(0, _paint)
+
+        def worker() -> None:
+            """Processa vídeo até o usuário solicitar pausa."""
+
+            session = TrackingSession(entry, roi, line)
+            snapshot: TrackingStats | None = None
+
+            try:
+                snapshot = session.run(stop_event=stop_event, stats_update=on_stats)
+            except Exception:
+                snapshot = None
+            finally:
+
+                def finalize_session(
+                    snap: TrackingStats | None = snapshot,
+                    ent: VideoEntry = entry,
+                ) -> None:
+                    if snap is None:
+                        messagebox.showerror(TRACKING_OPEN_FAILED_TITLE, TRACKING_OPEN_FAILED_MESSAGE)
+                    else:
+                        self._home.reload_captures_for_entry(ent)
+                    try:
+                        if stats_panel.winfo_exists():
+                            stats_panel.destroy()
+                    except Exception:
+                        pass
+
+                self.after(0, finalize_session)
+
+        threading.Thread(target=worker, name="tracking-session", daemon=True).start()
