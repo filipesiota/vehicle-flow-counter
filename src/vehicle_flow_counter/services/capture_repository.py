@@ -24,23 +24,23 @@ def _captura_sort_key(path: Path) -> tuple[float, str]:
     return (float("inf"), stem.lower())
 
 
-def listar_capturas(capturas_dir: Path | str) -> list[Path]:
+def listar_capturas(captures_dir: Path | str) -> list[Path]:
     """Lista ``*.jpg``, ordenadas pelo timestamp no nome (cronológico, igual a ``salvar_captura``)."""
-    diretorio = Path(capturas_dir).expanduser().resolve()
+    diretorio = Path(captures_dir).expanduser().resolve()
     if not diretorio.is_dir():
         return []
 
     return sorted(diretorio.glob("*.jpg"), key=_captura_sort_key)
 
 
-def salvar_captura(capturas_dir: Path | str, *, vehicle_id: int, crop_bgr: np.ndarray) -> Path:
+def salvar_captura(captures_dir: Path | str, *, vehicle_id: int, crop_bgr: np.ndarray) -> Path:
     """
-    Grava JPEG em ``{capturas_dir}/{unix}s_vehicle_{vehicle_id}.jpg``.
+    Grava JPEG em ``{captures_dir}/{unix}s_vehicle_{vehicle_id}.jpg``.
 
     Raises:
         OSError / cv2.errors: quando o disco estiver bloqueado ou ``imwrite`` falhar.
     """
-    dest_parent = Path(capturas_dir).expanduser().resolve()
+    dest_parent = Path(captures_dir).expanduser().resolve()
     dest_parent.mkdir(parents=True, exist_ok=True)
 
     ts = time.time()

@@ -12,7 +12,9 @@ from vehicle_flow_counter.config import (
     BTN_START_VERIFICATION,
     BTN_UPLOAD_NEW_VIDEO,
     HOME_DETAILS_HEADER,
-    HOME_DETAILS_PLACEHOLDER,
+    HOME_DETAILS_NO_SELECTION,
+    HOME_GALLERY_EMPTY,
+    HOME_GALLERY_HEADER,
     HOME_NO_VIDEOS,
     HOME_SELECTED_LABEL,
     HOME_SELECTED_PATH,
@@ -20,6 +22,7 @@ from vehicle_flow_counter.config import (
 )
 from vehicle_flow_counter.domain.models import VideoEntry
 from vehicle_flow_counter.services.video_repository import listar_videos
+from vehicle_flow_counter.ui.widgets.capture_gallery import CaptureGallery
 
 
 class HomeScreen(ctk.CTkFrame):
@@ -59,9 +62,6 @@ class HomeScreen(ctk.CTkFrame):
         self._list_body = ctk.CTkScrollableFrame(list_container, label_text="", height=380)
         self._list_body.pack(fill="both", expand=True)
 
-        self._empty_label = ctk.CTkLabel(self._list_body, text=HOME_NO_VIDEOS, wraplength=280)
-        self._empty_label.pack(pady=20)
-
         details = ctk.CTkFrame(body)
         details.grid(row=0, column=1, sticky="nsew")
 
@@ -80,9 +80,36 @@ class HomeScreen(ctk.CTkFrame):
         )
         self._verify_btn.pack(side="right")
 
-        self._details_text = ctk.CTkTextbox(details, wrap="word", height=340)
-        self._details_text.pack(fill="both", expand=True, padx=12, pady=(4, 12))
-        self._details_text.configure(state="disabled")
+        summary = ctk.CTkFrame(details, fg_color="transparent")
+        summary.pack(fill="x", padx=12, pady=(4, 6))
+
+        self._slug_label = ctk.CTkLabel(
+            summary,
+            text="",
+            anchor="w",
+            justify="left",
+            wraplength=420,
+        )
+        self._slug_label.pack(fill="x")
+
+        self._path_label = ctk.CTkLabel(
+            summary,
+            text="",
+            anchor="w",
+            justify="left",
+            wraplength=420,
+        )
+        self._path_label.pack(fill="x", pady=(4, 0))
+
+        ctk.CTkLabel(
+            details,
+            text=HOME_GALLERY_HEADER,
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).pack(fill="x", padx=12, pady=(8, 2))
+
+        self._gallery = CaptureGallery(details)
+        self._gallery.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        self._gallery.populate_from_dir(None, empty_hint=HOME_DETAILS_NO_SELECTION)
 
     def refresh_video_list(self, *, focus: VideoEntry | None = None) -> None:
         """Recarrega a lista a partir do disco; opcionalmente foca uma entrada pelo ``slug``."""
@@ -97,7 +124,7 @@ class HomeScreen(ctk.CTkFrame):
         if not videos:
             self._verify_btn.configure(state="disabled")
             ctk.CTkLabel(self._list_body, text=HOME_NO_VIDEOS, wraplength=280).pack(pady=20)
-            self._clear_details_placeholder()
+            self._clear_details_when_no_library()
             return
 
         for entry in videos:
@@ -124,14 +151,17 @@ class HomeScreen(ctk.CTkFrame):
                     break
         self._select_video(chosen)
 
-    def _clear_details_placeholder(self) -> None:
-        self._set_details_body(HOME_DETAILS_PLACEHOLDER + "\n")
+    def reload_captures_for_entry(self, tracked: VideoEntry) -> None:
+        """Atualiza thumbnails se o vídeo rastreado for o selecionado na home."""
+        if self._selected_entry is None or self._selected_entry.slug != tracked.slug:
+            return
+        ref = tracked.captures_dir.resolve()
+        self._gallery.populate_from_dir(ref, empty_hint=HOME_GALLERY_EMPTY)
 
-    def _set_details_body(self, text: str) -> None:
-        self._details_text.configure(state="normal")
-        self._details_text.delete("1.0", "end")
-        self._details_text.insert("1.0", text)
-        self._details_text.configure(state="disabled")
+    def _clear_details_when_no_library(self) -> None:
+        self._slug_label.configure(text="")
+        self._path_label.configure(text="")
+        self._gallery.populate_from_dir(None, empty_hint=HOME_DETAILS_NO_SELECTION)
 
     def _select_video(self, entry: VideoEntry) -> None:
         self._selected_slug = entry.slug
@@ -140,12 +170,9 @@ class HomeScreen(ctk.CTkFrame):
         self._highlight_selection()
 
         vp = Path(entry.video_path)
-        lines = (
-            f"{HOME_SELECTED_LABEL} {entry.slug}\n\n"
-            f"{HOME_SELECTED_PATH}\n{vp}\n\n"
-            + HOME_DETAILS_PLACEHOLDER
-        )
-        self._set_details_body(lines                )
+        self._slug_label.configure(text=f"{HOME_SELECTED_LABEL} {entry.slug}")
+        self._path_label.configure(text=f"{HOME_SELECTED_PATH}\n{vp}")
+        self._gallery.populate_from_dir(entry.captures_dir.resolve(), empty_hint=HOME_GALLERY_EMPTY)
 
     def _invoke_verification_flow(self) -> None:
         if self._selected_entry is None:
